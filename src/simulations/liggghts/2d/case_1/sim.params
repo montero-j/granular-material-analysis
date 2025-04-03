@@ -1,0 +1,7 @@
+variable Particle_diameter equal 0.01
+variable Particle_radius equal 0.005
+variable Orifice_diameter equal 0.04
+variable Orifice_radius equal 0.02
+variable Density equal 1500.0
+variable Gravity equal 9.8
+variable YoungModulus equal 1.0e8

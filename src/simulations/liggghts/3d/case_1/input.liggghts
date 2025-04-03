@@ -1,0 +1,277 @@
+# Domain decomposition for 4 cores (2 x 2 x 1)
+processors		2 2 3				##El numero de procesadores total que uso es el producto de los 3
+
+# Ejecutar el script de Python para obtener un número primo aleatorio y guardar en un archivo
+shell python3 generate_prime.py
+
+# Leer el número primo desde el archivo
+variable seed file prime_seed.txt
+
+
+# Comandos generales
+atom_style granular
+boundary f f f
+units si
+communicate single vel yes
+newton off
+
+# Variables del sistema
+variable xmin equal -0.06
+variable xmax equal 0.06
+variable ymin equal -0.06
+variable ymax equal 0.06
+variable zmin equal -0.01
+variable zmax equal 0.75
+
+variable dt equal 5e-6
+variable natoms equal 3
+
+variable youngmodulus1 equal 1e8
+variable youngmodulus2 equal 1e8
+variable youngmodulus3 equal 1e8
+
+variable poisson1 equal 0.3
+variable poisson2 equal 0.3
+variable poisson3 equal 0.3
+
+variable CoR11 equal 0.9
+variable CoR12 equal 0.9
+variable CoR13 equal 0.9
+
+variable CoR21 equal 0.9
+variable CoR22 equal 0.9
+variable CoR23 equal 0.9
+
+variable CoR31 equal 0.9
+variable CoR32 equal 0.9
+variable CoR33 equal 0.9
+
+variable sf11 equal 0.5
+variable sf12 equal 0.5
+variable sf13 equal 0.5
+
+variable sf21 equal 0.5
+variable sf22 equal 0.5
+variable sf23 equal 0.5
+
+variable sf31 equal 0.5
+variable sf32 equal 0.5
+variable sf33 equal 0.0
+
+
+variable nradii equal 2
+variable radius1 equal 0.001
+variable radius2 equal 0.0004
+variable frac1 equal 0.0
+variable frac2 equal 1.0
+
+variable density1 equal 2500
+variable density2 equal 2500
+
+variable filltime equal 0.75
+variable fillmass equal 0.0688
+variable fillmassrate equal ${fillmass}/${filltime}
+variable fillsteps equal ${filltime}/${dt}
+
+variable settletime equal 0.50
+variable settlesteps equal ${settletime}/${dt}
+
+variable openvel equal 0.1
+variable opentime equal 0.2
+variable opensteps equal ${opentime}/${dt}
+
+variable dischargetime equal 150.0
+variable dischargesteps equal ${dischargetime}/${dt}
+
+region reg block ${xmin} ${xmax} ${ymin} ${ymax} ${zmin} ${zmax} units box
+create_box 3 reg
+neighbor 0.004 bin
+neigh_modify delay 0
+
+pair_style gran model hertz tangential history
+pair_coeff * *
+timestep ${dt}
+fix integrator all nve/sphere
+fix gravi all gravity 9.81 vector 0.0 0.0 -1.0
+
+fix m1 all property/global youngsModulus peratomtype ${youngmodulus1} ${youngmodulus2} ${youngmodulus3}
+fix m2 all property/global poissonsRatio peratomtype ${poisson1} ${poisson2} ${poisson3}
+fix m3 all property/global coefficientRestitution peratomtypepair ${natoms} ${CoR11} ${CoR12} ${CoR13} ${CoR21} ${CoR22} ${CoR23} ${CoR31} ${CoR32} ${CoR33}
+fix m4 all property/global coefficientFriction peratomtypepair ${natoms} ${sf11} ${sf12} ${sf13} ${sf21} ${sf22} ${sf23} ${sf31} ${sf32} ${sf33}
+
+fix silo all mesh/surface file Silo.stl type 3 curvature_tolerant yes
+fix lid all mesh/surface file Lid.stl type 3 
+fix walls all wall/gran model hertz tangential history mesh n_meshes 2 meshes silo lid
+
+fix pts1 all particletemplate/sphere 10487 atom_type 1 density constant ${density1} radius constant ${radius1}
+fix pts2 all particletemplate/sphere 11887 atom_type 2 density constant ${density2} radius constant ${radius2}
+
+# Nueva plantilla de distribución con proporciones específicas
+fix pdd all particledistribution/discrete 32452867 2 pts1 ${frac1} pts2 ${frac2}
+
+fix ins_mesh all mesh/surface/planar file Insertionsface.stl type 1 
+
+fix ins all insert/stream seed ${seed} distributiontemplate pdd &
+    mass ${fillmass} massrate ${fillmassrate} overlapcheck yes all_in yes vel constant 0 0 -1.5 &
+    insertion_face ins_mesh extrude_length 0.05
+
+shell mkdir post
+
+variable dumptime equal 0.1#0.05
+variable dumpstep equal ${dumptime}/${dt}
+variable dumptime2 equal 0.01
+variable dumpstep2 equal ${dumptime2}/${dt}
+
+dump dmpparticle all custom/vtk ${dumpstep} post/particles_*.vtk id type x y z vx vy vz fx fy fz radius mass
+dump dmpsilo all mesh/stl ${dumpstep} post/Silo*.stl silo
+dump dmplid all mesh/stl ${dumpstep} post/Lid*.stl lid
+
+restart 100000 poly.restart
+
+
+run ${fillsteps}
+unfix ins
+
+variable MinEnerg equal 10e-10
+compute energ all ke update_on_run_end yes
+
+label settle_loop
+run 10000
+variable curr_energ equal c_energ
+if "${curr_energ} > ${MinEnerg}" then "jump SELF settle_loop"
+
+group g1 type 1
+group g2 type 2
+
+fix exit_mesh all mesh/surface/planar file Lid.stl type 3
+
+fix mass g1 massflow/mesh mesh exit_mesh vec_side 0. 0. -1.
+fix mass2 g2 massflow/mesh mesh exit_mesh vec_side 0. 0. -1.
+
+variable MassTotal equal f_mass[1]
+variable NoPTotal equal f_mass[2]
+variable MassFlow equal f_mass[3]
+variable NoPFlow equal f_mass[4]
+variable tiempo equal ${dt}*step
+
+variable MassTotal2 equal f_mass2[1]
+variable NoPTotal2 equal f_mass2[2]
+variable MassFlow2 equal f_mass2[3]
+variable NoPFlow2 equal f_mass2[4]
+
+variable minFlow equal 1e-10
+variable force_steps equal 200
+
+fix output all print ${dumpstep2} "${tiempo},${MassTotal},${MassFlow},${NoPTotal},${NoPFlow},${MassTotal2},${MassFlow2},${NoPTotal2},${NoPFlow2}" screen no file Measurements.csv title "Time,MassTotal1,MassFlow1,NoPTotal1,NoPFlow1,MassTotal2,MassFlow2,NoPTotal2,NoPFlow2"
+
+fix MoveLid all move/mesh mesh lid linear ${openvel} 0. 0.
+run ${opensteps}
+unfix MoveLid
+
+variable force_apply_a equal 0
+variable force_apply_b equal 0
+variable force_start_step equal 0
+
+# Calcular el número de pasos para 5 segundos
+variable time_window equal 5.0
+variable steps_window equal ${time_window}/${dt}
+
+# Variables para monitorear el flujo
+variable no_flow_steps equal 0
+
+# Región donde se aplica la fuerza
+variable altura equal 2.45
+region bot_region block ${xmin} ${xmax} ${ymin} ${ymax} ${zmin} ${altura} units box
+
+# Región de medición
+region measurementregion block ${xmin} ${xmax} ${ymin} ${ymax} ${zmin} ${zmax} units box
+
+# Simulación de descarga
+run 10000
+
+# Bucle de descarga
+label loop_start
+run 100000
+variable num equal count(g1,measurementregion)
+variable flow equal ${NoPFlow}# Flujo total de tipo 1
+
+
+if "(${flow} < ${minFlow})" then &
+    "variable no_flow_steps equal ${no_flow_steps}+100000" &
+else &
+    "variable no_flow_steps equal 0"
+
+if "(${no_flow_steps} > ${steps_window})" then &
+    "jump SELF end_loop" &
+else &
+    "jump SELF loop_start"
+
+label end_loop
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Sirve si quiero aplicar una fuerza
+
+#label loop_start
+#variable step equal step
+
+# # Actualizar el contador de avalanchas
+# if "(${prev_flow} > 0) && (${MassFlow} == 0)" then "variable avalanche_count equal ${avalanche_count}+1"
+# variable prev_flow equal ${MassFlow}
+
+# if "(${force_apply_a} == 1)" then "fix fuerza g1 addforce 0.0 0.0 -25.0 region bot_region"
+
+# if "(${force_apply_b} == 1)" then "fix fuerza2 g1 addforce 0.0 0.0 -50.0 region bot_region"
+
+# if "(${MassFlow} < ${minFlow}) || (${force_apply_a} == 0)" then &
+#   "print 'No hay flujo de partículas, se aplicará fuerza adicional'" &
+#   "fix fuerza g1 addforce 0.0 0.0 25.0 region bot_region" &
+#   "variable force_apply_a equal 1" &
+#   "run 100" &
+# else &
+# "run 100"
+
+# if "(${MassFlow} < ${minFlow}) || (${force_apply_a} == 1)" then &
+#   "print 'No hay flujo de partículas, se aplicará mas fuerza adicional'" &
+#   "fix fuerza2 g1 addforce 0.0 0.0 25.0 region bot_region" &
+#   "variable force_apply_b equal 1" &
+#   "run 100" 
+
+# # Terminar la simulación después de 200 avalanchas
+# if "${avalanche_count} >= 200" then "jump SELF end_loop"
+
+# jump SELF loop_start
+
+# label end_loop
+
