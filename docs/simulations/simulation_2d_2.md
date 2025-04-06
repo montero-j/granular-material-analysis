@@ -1,3 +1,3 @@
-### LIGGGHTS 2D Silo Discharge with Variable Fixed Particle Spacing
+### LIGGGHTS Cuasi 2D Silo Discharge with Variable Fixed Particle Spacing
 
-This LIGGGHTS simulations are designed to investigate the impact of fixed particles near the orifice on the discharge flow arte in a 2D silo. Specifically, the simulations explore the effect of varying the distance between two fixed particles, positioned at the orifice's edges, and the resulting flow rate. This setup is used to analyze how particle spacing influences clogging behavior and discharge dynamics.
+This LIGGGHTS simulations are designed to investigate the impact of fixed particles near the orifice on the discharge flow arte in a cuasi 2D silo. Specifically, the simulations explore the effect of varying the distance between two fixed particles, positioned at the orifice's edges, and the resulting flow rate. This setup is used to analyze how particle spacing influences clogging behavior and discharge dynamics.
